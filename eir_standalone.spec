@@ -4,7 +4,7 @@ a = Analysis(
     ['eir.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('eir2.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -38,7 +38,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch='arm64',
+    target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
 )
