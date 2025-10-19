@@ -1,125 +1,85 @@
-#!/usr/bin/env python3
-"""
-Eir Mac App Distribution Builder
-Creates a distributable DMG file for the Eir STPA tool.
-"""
-
-import os
-import subprocess
-import shutil
+#%%
+from __future__ import annotations
+import os, shutil, subprocess, sys, time
 from pathlib import Path
+from typing import Optional
 
-def run_command(cmd, check=True):
-    """Run a shell command with error handling."""
+ROOT = Path(__file__).resolve().parent
+DIST = ROOT / "dist"
+DMG_TMP = ROOT / "dmg_temp"
+APP_NAME = "Eir.app"
+VOL_NAME = "Eir STPA Tool"
+
+def sh(cmd: str, check: bool = True) -> int:
     print(f"Running: {cmd}")
-    result = subprocess.run(cmd, shell=True, check=check)
-    return result.returncode == 0
+    return subprocess.run(cmd, shell=True, check=check).returncode
 
-def create_dmg():
-    """Create a distributable DMG file."""
-    print("🏗️ Creating distributable DMG...")
-    
-    # Clean any existing DMG files
-    dmg_files = list(Path(".").glob("Eir*.dmg"))
-    for dmg_file in dmg_files:
-        dmg_file.unlink()
-        print(f"  Removed existing {dmg_file}")
-    
-    # Create temporary directory for DMG contents
-    dmg_dir = Path("dmg_temp")
-    if dmg_dir.exists():
-        shutil.rmtree(dmg_dir)
-    dmg_dir.mkdir()
-    
-    # Copy the app to DMG directory
-    app_path = Path("dist/Eir.app")
-    if not app_path.exists():
-        print("❌ Eir.app not found. Please build the app first.")
-        return False
-    
-    shutil.copytree(app_path, dmg_dir / "Eir.app")
-    
-    # Create Applications folder symlink
-    run_command(f"ln -s /Applications '{dmg_dir}/Applications'")
-    
-    # Create README for the DMG
-    readme_content = """Eir STPA Tool v0.4.6
+def clean_dirs() -> None:
+    if DMG_TMP.exists():
+        shutil.rmtree(DMG_TMP)
+    DMG_TMP.mkdir(parents=True, exist_ok=True)
+    DIST.mkdir(parents=True, exist_ok=True)
 
-Installation Instructions:
-1. Drag Eir.app to the Applications folder
-2. Launch from Applications or Spotlight
+def unique_dmg_name(version_hint: Optional[str] = None) -> Path:
+    # Prefer tag name from CI, else timestamp
+    tag = os.getenv("GITHUB_REF_NAME") or version_hint or time.strftime("v%Y%m%d-%H%M%S")
+    return DIST / f"Eir-STPA-Tool-{tag}.dmg"
 
-The Eir STPA (System-Theoretic Process Analysis) Tool helps you:
-• Create control structure diagrams
-• Analyze losses and hazards  
-• Perform UCA (Unsafe Control Actions) analysis
-• Generate comprehensive safety documentation
+def create_dmg(version_hint: Optional[str] = None) -> Path:
+    clean_dirs()
 
-For support and documentation, visit:
-https://github.com/eir-project
+    # Copy the .app produced by PyInstaller to the dmg temp
+    app_src = DIST / APP_NAME
+    if not app_src.exists():
+        raise FileNotFoundError(f"Expected {app_src} (did PyInstaller produce the .app?)")
 
-Built with PySide6 and optimized for macOS 11.0+
-"""
-    
-    with open(dmg_dir / "README.txt", "w") as f:
-        f.write(readme_content)
-    
-    # Create the DMG
-    dmg_name = "Eir-STPA-Tool-v0.4.6.dmg"
-    success = run_command(f"""
-        hdiutil create -volname "Eir STPA Tool" \
-        -srcfolder "{dmg_dir}" \
-        -ov -format UDZO \
-        -imagekey zlib-level=9 \
-        "{dmg_name}"
-    """)
-    
-    # Clean up temp directory
-    shutil.rmtree(dmg_dir)
-    
-    if success and Path(dmg_name).exists():
-        size = Path(dmg_name).stat().st_size / (1024 * 1024)
-        print(f"✅ DMG created successfully: {dmg_name} ({size:.1f} MB)")
-        print(f"📦 Ready for distribution!")
-        return True
-    else:
-        print("❌ Failed to create DMG")
-        return False
+    app_dst = DMG_TMP / APP_NAME
+    shutil.copytree(app_src, app_dst, symlinks=True)
 
-def build_and_package():
-    """Build the app and create distributable package."""
-    print("🚀 Building and packaging Eir for distribution...")
-    
-    # Clean previous builds
-    for path in ["build", "dist"]:
-        if Path(path).exists():
-            shutil.rmtree(path)
-            print(f"  Cleaned {path}/")
-    
-    # Build the app
-    venv_python = Path(".venv/bin/python")
-    venv_pyinstaller = Path(".venv/bin/pyinstaller")
-    
-    if not venv_pyinstaller.exists():
-        print("Installing PyInstaller...")
-        run_command(f"{venv_python} -m pip install pyinstaller")
-    
-    # Build with custom spec
-    success = run_command(f"{venv_pyinstaller} eir_standalone.spec")
-    
-    if success and Path("dist/Eir.app").exists():
-        print("✅ App build completed")
-        
-        # Create DMG
-        return create_dmg()
-    else:
-        print("❌ App build failed")
-        return False
+    # Add /Applications alias inside the DMG
+    sh(f"ln -s /Applications '{(DMG_TMP / 'Applications').as_posix()}'")
+
+    dmg_path = unique_dmg_name(version_hint)
+
+    # Ensure no leftover DMG with same name
+    if dmg_path.exists():
+        dmg_path.unlink()
+
+    # Extra safety: list and detach any mounted images with same name (rare in CI)
+    # No-op if not mounted.
+    subprocess.run("hdiutil info | awk '/Eir STPA Tool/ {print $1}' | xargs -I{{}} hdiutil detach {{}}",
+                   shell=True, check=False)
+
+    # Create compressed DMG with retries (handles sporadic 'Resource busy')
+    cmd = (
+        f'hdiutil create -volname "{VOL_NAME}" '
+        f'-srcfolder "{DMG_TMP}" -ov -format UDZO -imagekey zlib-level=9 '
+        f'"{dmg_path}"'
+    )
+
+    tries, delay = 3, 5
+    for i in range(1, tries + 1):
+        try:
+            sh(cmd, check=True)
+            break
+        except subprocess.CalledProcessError as e:
+            if i == tries:
+                raise
+            print(f"[warn] hdiutil failed (attempt {i}/{tries}). Sleeping {delay}s then retrying…")
+            time.sleep(delay)
+
+    print(f"✅ DMG created at: {dmg_path}")
+    return dmg_path
+
+def main() -> None:
+    # Allow `python package_mac.py dmg-only` (your current usage)
+    args = sys.argv[1:]
+    version_hint = None
+    if args:
+        # Accept optional version like dmg-only:v0.4.6
+        if ":" in args[0]:
+            _, version_hint = args[0].split(":", 1)
+    create_dmg(version_hint)
 
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == "dmg-only":
-        create_dmg()
-    else:
-        build_and_package()
+    main()
