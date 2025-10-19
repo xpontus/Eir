@@ -50,21 +50,7 @@ python build.py build      # Build distributable
 python build.py run        # Run in development mode
 ```
 
-## Features
 
-- **Interactive STPA Analysis**: Create and edit control structures, losses, hazards, and unsafe control actions
-- **Graph Editor**: Visual control structure editor with drag-and-drop functionality
-- **AI Integration**: Get assistance with STPA methodology and analysis
-- **Document Management**: Attach and manage supporting documents
-- **Export/Import**: Save and load projects in JSON format
-- **Cross-platform**: Works on macOS, Windows, and Linux
-
-## Documentation
-
-See the `documents/` folder for detailed documentation:
-- [Installation Guide](documents/INSTALLATION.md)
-- [Developer Guide](documents/DEVELOPER.md)
-- [Build Instructions](documents/BUILD_DISTRIBUTION.md)
 
 ## Contact
 
