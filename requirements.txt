@@ -1,0 +1,35 @@
+# Eir v0.4.6 - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core GUI Framework
+PySide6==6.8.0.2
+
+# Graph/Network Visualization
+networkx>=3.5
+matplotlib>=3.10.0
+
+# Scientific Computing
+numpy>=2.3.0
+pillow>=11.0.0
+
+# AI Integration (Optional - for Ollama features)
+openai>=1.90.0
+langchain>=0.3.20
+langchain-core>=0.3.60
+langchain-text-splitters>=0.3.8
+langsmith>=0.4.1
+httpx>=0.28.0
+requests>=2.32.0
+pydantic>=2.11.0
+
+# Build Tools (for creating distributions)
+pyinstaller>=6.16.0
+pyinstaller-hooks-contrib>=2025.9
+
+# Utilities
+pyyaml>=6.0.0
+packaging>=24.0.0
+python-dateutil>=2.9.0
+
+# Note: Python 3.9+ required
+# For AI features, install Ollama separately: https://ollama.ai
