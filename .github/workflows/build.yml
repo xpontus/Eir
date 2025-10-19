@@ -1,0 +1,101 @@
+name: Build Standalone Apps
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-macos:
+    runs-on: macos-13  # Use Intel runners for better compatibility
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'  # More stable than 3.13
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build macOS app
+      run: |
+        pyinstaller eir_standalone.spec
+        
+    - name: Create DMG (only on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        python package_mac.py dmg-only
+    
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: eir-macos
+        path: |
+          dist/Eir.app/
+          Eir-STPA-Tool-*.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build Windows app
+      run: |
+        pyinstaller eir_windows.spec
+    
+    - name: Create Windows ZIP (only on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        mkdir eir-windows
+        copy dist\Eir.exe eir-windows\
+        copy LICENSE eir-windows\
+        copy README.md eir-windows\ 2>nul || echo "README.md not found"
+        powershell Compress-Archive -Path eir-windows -DestinationPath Eir-Windows.zip
+    
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: eir-windows
+        path: |
+          dist/Eir.exe
+          Eir-Windows.zip
+
+  create-release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          eir-macos/Eir-STPA-Tool-*.dmg
+          eir-windows/Eir-Windows.zip
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
